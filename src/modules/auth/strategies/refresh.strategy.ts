@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
-import { User } from '../../../shared/entities/user.entity';
+import { StudentUser } from '../../../shared/entities/user.entity';
 import { AuthService } from '../auth.service';
 
 @Injectable()
@@ -21,7 +21,16 @@ export class RefreshStrategy extends PassportStrategy(Strategy, 'refresh') {
     });
   }
 
-  async validate(req: Request, { id }: User) {
-    return await this.authService.validateRefreshToken(id, req.cookies.Refresh);
+  async validate(req: Request, { id }: StudentUser) {
+    const userId = await this.authService.validateRefreshToken(
+      id,
+      req.cookies.Refresh,
+    );
+
+    if (userId) {
+      return await this.authService.isUserExistById(userId);
+    }
+
+    return false;
   }
 }

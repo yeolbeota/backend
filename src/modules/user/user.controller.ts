@@ -5,18 +5,21 @@ import {
   Body,
   Patch,
   Param,
-  HttpException,
   HttpStatus,
   Res,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { AccessGuard } from 'src/modules/auth/guards/access.guard';
+import { User } from 'src/shared/decorator/user.decorator';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { AdminGuard } from '../admin/guards/admin.guard';
+import { UpdateStatusDto } from './dto/update-status.dto';
 
 @Controller('user')
+@ApiTags('User')
 @UseGuards(AccessGuard)
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -24,27 +27,49 @@ export class UserController {
   @Post()
   create(@Res() res: Response) {
     res.redirect(HttpStatus.MOVED_PERMANENTLY, '/auth/google');
-    // return this.userService.create(createUserDto);
   }
 
   @Get()
-  findAll(@Req() req: Request) {
-    if (!req.user) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
-    return this.userService.findOne(req.user.id);
+  @ApiBearerAuth()
+  @UseGuards(AccessGuard)
+  async findAll() {
+    return await this.userService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userService.findOne(id);
+  @ApiBearerAuth()
+  @UseGuards(AccessGuard)
+  async findOne(@Param('id') id: string) {
+    return await this.userService.findOne(id);
   }
 
   @Patch()
-  update(@Req() req: Request, @Body() updateUserDto: UpdateUserDto) {
-    if (!req.user) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
-    return this.userService.update(req.user.id, updateUserDto);
+  @ApiBearerAuth()
+  @UseGuards(AccessGuard)
+  async update(
+    @User() user: Express.User,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.userService.update(user.id, updateUserDto);
+  }
+
+  @Patch(':id')
+  @ApiBearerAuth()
+  @UseGuards(AdminGuard)
+  async updateById(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return await this.userService.update(id, updateUserDto);
+  }
+
+  @Patch('status/:id')
+  @ApiBearerAuth()
+  @UseGuards(AdminGuard)
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+  ) {
+    return await this.userService.updateStatus(id, updateStatusDto);
   }
 }

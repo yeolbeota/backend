@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { User } from '../entities/user.entity';
+import entities from '../entities';
 
 @Module({
   imports: [
@@ -13,11 +13,12 @@ import { User } from '../entities/user.entity';
         database: config.get<string>('DB_NAME'),
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
-        entities: [User],
+        entities: entities,
         migrations: [],
         subscribers: [],
         synchronize: true,
         charset: 'utf8_general_ci',
+        timezone: 'Asia/Seoul',
       }),
       inject: [ConfigService],
     }),

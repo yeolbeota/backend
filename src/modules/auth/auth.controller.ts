@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { HttpExceptionRedirectFilter } from 'src/filters/http-exception.filter';
@@ -18,10 +18,12 @@ import { AccessGuard } from './guards/access.guard';
 import { GoogleGuard } from './guards/google.guard';
 import { RefreshGuard } from './guards/refresh.guard';
 import { Cookie } from 'src/constants';
+import { User } from 'src/shared/decorator/user.decorator';
 
 const { REFRESH_TOKEN_KEY, REFRESH_TOKEN_OPTION } = Cookie;
 
 @Controller('auth')
+@ApiTags('Auth')
 export class AuthController {
   constructor(
     private readonly config: ConfigService,
@@ -32,8 +34,8 @@ export class AuthController {
   @Get('/')
   @ApiBearerAuth()
   @UseGuards(AccessGuard)
-  hello() {
-    return 'Hello World!';
+  hello(@User() user: Express.User) {
+    return user;
   }
 
   @Get('/google')
@@ -44,15 +46,16 @@ export class AuthController {
   @Get('/google/callback')
   @UseGuards(GoogleGuard)
   @UseFilters(new HttpExceptionRedirectFilter('/auth/google', [401]))
-  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-    if (!req.user) {
+  async googleAuthRedirect(@User() user: Express.User, @Res() res: Response) {
+    if (!user) {
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
-    const refreshToken = await this.authService.generateRefreshToken(req.user);
+
+    const refreshToken = await this.authService.generateRefreshToken(user);
     const frontendUrl = this.config.get<string>('FRONTEND_URL');
 
     if (!frontendUrl) {
-      throw new Error('FRONTEND_URL is not setted');
+      throw new Error('FRONTEND_URL is not defined');
     }
 
     res.cookie(REFRESH_TOKEN_KEY, refreshToken, REFRESH_TOKEN_OPTION());
@@ -68,5 +71,15 @@ export class AuthController {
     return {
       accessToken: await this.authService.generateAccessToken(req.user),
     };
+  }
+
+  @Get('/logout')
+  @ApiBearerAuth()
+  @UseGuards(AccessGuard)
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const { id } = req.user as Express.User;
+    await this.authService.deleteRefreshToken(id);
+    res.clearCookie(REFRESH_TOKEN_KEY);
+    res.status(HttpStatus.OK).json({ message: 'Logout success' });
   }
 }

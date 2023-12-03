@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { User } from 'src/shared/entities/user.entity';
+import {
+  BaseUser,
+  StudentUser,
+  TeacherUser,
+} from 'src/shared/entities/user.entity';
 import { Repository } from 'typeorm';
 
 @Injectable()
@@ -10,19 +14,29 @@ export class AuthService {
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    @InjectRepository(StudentUser)
+    private readonly studentRepository: Repository<StudentUser>,
+    @InjectRepository(TeacherUser)
+    private readonly teacherRepository: Repository<StudentUser>,
   ) {}
 
   public async isUserExistByEmail(email: string): Promise<boolean> {
-    return !!(await this.userRepository.findOneBy({ email }));
+    return !!(await this.studentRepository.findOneBy({ email }));
   }
 
-  public async isUserExistById(id: string): Promise<boolean> {
-    return !!(await this.userRepository.findOneBy({ id }));
+  public async isUserExistById(id: string) {
+    const studentUser = await this.studentRepository.findOneBy({ id });
+    if (studentUser) return studentUser;
+
+    const teacherUser = await this.teacherRepository.findOneBy({ id });
+    if (teacherUser) return teacherUser;
+
+    return false;
   }
 
-  public async generateRefreshToken(user: Pick<User, 'id'>): Promise<string> {
+  public async generateRefreshToken(
+    user: Pick<BaseUser, 'id'>,
+  ): Promise<string> {
     const token = await this.jwtService.signAsync(
       { id: user.id },
       {
@@ -31,20 +45,37 @@ export class AuthService {
       },
     );
 
-    await this.userRepository.update({ id: user.id }, { refreshToken: token });
+    if (user instanceof StudentUser) {
+      await this.studentRepository.update(
+        { id: user.id },
+        { refreshToken: token },
+      );
+    }
+
+    if (user instanceof TeacherUser) {
+      await this.teacherRepository.update(
+        { id: user.id },
+        { refreshToken: token },
+      );
+    }
 
     return token;
   }
 
-  public async validateRefreshToken(
-    userId: string,
-    refreshToken: string,
-  ): Promise<boolean> {
+  public async validateRefreshToken(userId: string, refreshToken: string) {
     try {
-      const user = await this.userRepository.findOne({
+      let user = await this.studentRepository.findOne({
         where: { id: userId },
         select: ['id', 'refreshToken'],
       });
+
+      if (!user) {
+        user = await this.teacherRepository.findOne({
+          where: { id: userId },
+          select: ['id', 'refreshToken'],
+        });
+      }
+
       const token = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.configService.get('REFRESH_TOKEN_SECRET'),
       });
@@ -53,13 +84,17 @@ export class AuthService {
         return false;
       }
 
-      return token.id === user.id && refreshToken === user.refreshToken;
+      return (
+        token.id === user.id && refreshToken === user.refreshToken && user.id
+      );
     } catch {
       return false;
     }
   }
 
-  public async generateAccessToken(user: Pick<User, 'id'>): Promise<string> {
+  public async generateAccessToken(
+    user: Pick<BaseUser, 'id'>,
+  ): Promise<string> {
     return await this.jwtService.signAsync(
       { id: user.id },
       {
@@ -77,10 +112,14 @@ export class AuthService {
       const { id } = await this.jwtService.verifyAsync(accessToken, {
         secret: this.configService.get('ACCESS_TOKEN_SECRET'),
       });
-
       return id === userId;
     } catch {
       return false;
     }
+  }
+
+  public async deleteRefreshToken(userId: string): Promise<void> {
+    await this.studentRepository.update({ id: userId }, { refreshToken: '' });
+    await this.teacherRepository.update({ id: userId }, { refreshToken: '' });
   }
 }
